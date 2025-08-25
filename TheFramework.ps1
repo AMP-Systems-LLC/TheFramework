@@ -11,7 +11,7 @@ Import-Module $env:SyncroModule
   Original Author: ROI Technology Inc.
   Created: 2025-01-01
   Revised: 2025-08-25
-  Version: 2.3-generic
+  Version: 2.3.2
 
  .DISCLAIMER
     Copyright (C) 2025 ROI Technology Inc. and contributors
@@ -31,10 +31,19 @@ Import-Module $env:SyncroModule
 #>
 
 # ===================== REQUIRED JOB VARIABLES =====================
-if (-not $runasuser) { $runasuser = 'no' }   # "yes" to run payload as the logged-in user
-$RemoteScriptUrl = "https://raw.githubusercontent.com/username/repository/branch/script.ps1"  # RAW URL to payload
-$originalScriptLocation = "<INSERT NON-RAW URL>"  # Optional troubleshooting link (non-raw)
-$ProgressPreference = 'SilentlyContinue' #TBD
+
+#      **************** SET THIS LINE ONLY!! ****************           
+$originalScriptLocation = "<INSERT NON-RAW URL>" # This is the URL to the script. NOT the raw URL, that's handled automatically as of version 2.3.1 - you only need the path the script that ends in .ps1
+
+#      **************** DO NOT EDIT ANYTHING BELOW **********
+
+if (-not $runasuser) { $runasuser = 'no' }          # "yes" to run payload as the logged-in user
+# $RemoteScriptUrl = "https://raw.githubusercontent.com/username/repository/branch/script.ps1"  # We don't use this anymore, but I left it for troubleshooting. 
+$ProgressPreference = 'SilentlyContinue'
+
+# Used in Execution Flow section later.
+$nonRawUrl = "$originalScriptLocation"
+# $rawUrl    = Convert-GitHubToRawUrl $nonRawUrl
 
 # ===================== SECURITY CONSTANTS (generic) =====================
 $SECRET_NAME   = 'GITHUB_PAT'
@@ -83,6 +92,48 @@ function Get-GitHubPat {
     if (-not $token) { throw "No stored PAT found for user or machine." }
     return $token
 }
+
+# ===================== URL CONVERSION ===================== 
+# Define the Convert-GitHubToRawUrl function
+function Convert-GitHubToRawUrl {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Url)
+
+    $uri = [Uri]$Url
+    if ($uri.Host -eq 'raw.githubusercontent.com') {
+        $builder = [System.UriBuilder]::new($Url)
+        $builder.Query    = $null
+        $builder.Fragment = $null
+        $raw = $builder.Uri.AbsoluteUri
+        Set-Variable -Name rawURLOutput -Value $raw -Scope 1
+        return $raw
+    }
+    if ($uri.Host -ne 'github.com') {
+        throw "Only github.com file URLs can be converted."
+    }
+    $segments = $uri.AbsolutePath.Trim('/').Split('/')
+    $blobIndex = [Array]::IndexOf($segments, 'blob')
+    if ($blobIndex -eq -1) { $blobIndex = [Array]::IndexOf($segments, 'tree') }
+    if ($blobIndex -eq -1 -or $segments.Length -lt $blobIndex + 3) {
+        throw "URL must contain '/blob/' or '/tree/' followed by a branch or ref."
+    }
+    $owner = $segments[0]; $repo = $segments[1]; $ref  = $segments[$blobIndex + 1]
+    $pathSegments = $segments[($blobIndex + 2)..($segments.Length - 1)]
+    if ($ref -eq 'refs') {
+        $ref = "$($segments[$blobIndex + 1])/$($segments[$blobIndex + 2])/$($segments[$blobIndex + 3])"
+        $pathSegments = $segments[($blobIndex + 4)..($segments.Length - 1)]
+    } elseif ($ref -notmatch '^[0-9A-Fa-f]{40}$') {
+        $ref = "refs/heads/$ref"
+    }
+    $rawPath = "$owner/$repo/$ref"
+    if ($pathSegments) { $rawPath += '/' + ($pathSegments -join '/') }
+    $builder = [System.UriBuilder]::new('https','raw.githubusercontent.com',-1,'/' + $rawPath)
+    $builder.Query = $null; $builder.Fragment = $null
+    $rawUrl = $builder.Uri.AbsoluteUri
+    Set-Variable -Name rawURLOutput -Value $rawUrl -Scope 1
+    return $rawUrl
+}
+
 
 # ===================== SEED PER-USER SECRET (SYSTEM ONLY) =====================
 function Ensure-UserSecretFromMachine {
@@ -171,14 +222,18 @@ function Invoke-RemoteScript {
         Write-Host "========================="
         Invoke-WebRequest -Uri $RemoteScriptUrl -Headers $Headers -OutFile $DownloadPath -ErrorAction Stop
         Write-Host "Executing downloaded script: $DownloadPath"
-        Write-Host "========================="
+        Write-Host "===========BEGIN PAYLOAD OUTPUT=============="
         . $DownloadPath
     } catch {
         Write-Error "An error occurred: $_"
         Write-Host "========================="
     } finally {
+        Write-Host "===========END PAYLOAD OUTPUT=============="
+        Write-Host "Starting cleanup process from within the function Invoke-RemoteScript"
+        Write-Host "========================="
         if (Test-Path $DownloadPath) { Remove-Item -Path $DownloadPath -Force }
         $Headers=$null; $GitHubPAT=$null; [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+        Write-Host "Cleanup process has successfully remove the payload from $DownloadPath"        
     }
 }
 function Invoke-RemoteScriptAsUser {
@@ -257,18 +312,29 @@ if (-not (Test-IsSystem)) {
 Write-Host "========================="
 Write-Host "Framework executed at: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
 Write-Host "========================="
+Write-Host "Converting $nonRawUrl to raw URL..."
+Write-Host "========================="
+# Convert the non-raw script path to a raw path so we can download the payload and run it. 
+$RemoteScriptUrl = Convert-GitHubToRawUrl $nonRawUrl
+Write-Host "RAW URL is $RemoteScriptURL"
+Write-Host "========================="
 Write-Host "The original script is located at: $originalScriptLocation"
 Write-Host "========================="
-
 try {
     if ($runasuser -eq 'yes') {
-        Write-Host "runasuser='yes' → launching payload as logged-in user (with per-user secret)"
+        Write-Host "Script was instructed to run payload as user. Create one-shot scheduled task to run payload as user"
         Invoke-RemoteScriptAsUser -RemoteScriptUrl $RemoteScriptUrl
     } else {
         $GitHubPAT = Get-GitHubPat
-        Write-Host "runasuser='no' → running payload as SYSTEM (machine secret)"
+        Write-Host "runasuser='no' | running payload as SYSTEM (machine secret)"
+        Write-Host "========================="
         Invoke-RemoteScript -RemoteScriptUrl $RemoteScriptUrl -GitHubPAT $GitHubPAT
+        Write-Host "========================="
+        Write-Host "The payload has finished, cleaning up GitHubPAT"
+        Write-Host "========================="
         Remove-Variable -Name GitHubPAT -ErrorAction SilentlyContinue
+        Write-Host "Cleanup finished, exiting The Framework"
+        exit 0
     }
 } catch {
     Write-Error "Framework error: $($_.Exception.Message)"
