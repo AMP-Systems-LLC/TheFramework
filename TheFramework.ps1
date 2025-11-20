@@ -221,13 +221,13 @@ function Invoke-RemoteScript {
         Write-Host "========================="
         Invoke-WebRequest -Uri $RemoteScriptUrl -Headers $Headers -OutFile $DownloadPath -ErrorAction Stop
         Write-Host "Executing downloaded script: $DownloadPath"
-        Write-Host "===========BEGIN PAYLOAD OUTPUT==============`n"
+        Write-Host "`n===========BEGIN PAYLOAD OUTPUT==============`n"
         . $DownloadPath
     } catch {
         Write-Error "An error occurred: $_"
         Write-Host "========================="
     } finally {
-        Write-Host "`n===========END PAYLOAD OUTPUT=============="
+        Write-Host "`n===========END PAYLOAD OUTPUT==============`n"
         Write-Host "Starting cleanup process from within the function Invoke-RemoteScript"
         Write-Host "========================="
         if (Test-Path $DownloadPath) { Remove-Item -Path $DownloadPath -Force }
