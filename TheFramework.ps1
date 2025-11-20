@@ -1,3 +1,9 @@
+#      **************** SET THIS LINE ONLY!! ****************           
+# This is the URL to the script. NOT the raw URL, that's handled automatically.
+$originalScriptLocation = '<INSERT NON-RAW URL>'
+
+#      **************** DO NOT EDIT ANYTHING BELOW **********
+
 Import-Module $env:SyncroModule
 
 <#
@@ -30,15 +36,7 @@ Import-Module $env:SyncroModule
     ---------------------------------------------------------------------- 
 #>
 
-# ===================== REQUIRED JOB VARIABLES =====================
-
-#      **************** SET THIS LINE ONLY!! ****************           
-$originalScriptLocation = "<INSERT NON-RAW URL>" # This is the URL to the script. NOT the raw URL, that's handled automatically as of version 2.3.1 - you only need the path the script that ends in .ps1
-
-#      **************** DO NOT EDIT ANYTHING BELOW **********
-
-if (-not $runasuser) { $runasuser = 'no' }          # "yes" to run payload as the logged-in user
-# $RemoteScriptUrl = "https://raw.githubusercontent.com/username/repository/branch/script.ps1"  # We don't use this anymore, but I left it for troubleshooting. 
+if (-not $runasuser) { $runasuser = 'no' } # "yes" to run payload as the logged-in user
 $ProgressPreference = 'SilentlyContinue'
 
 # Used in Execution Flow section later.
@@ -49,8 +47,8 @@ $nonRawUrl = "$originalScriptLocation"
 $SECRET_NAME   = 'GITHUB_PAT'
 $ENTROPY_BYTES = [Text.Encoding]::UTF8.GetBytes("Org-Secret-v1:$SECRET_NAME")
 $USER_BLOB     = Join-Path $env:APPDATA 'SecureStore\Secrets\GITHUB_PAT.bin'
-$MACH_BLOB     = 'C:\ProgramData\SecureStore\Secrets\GITHUB_PAT.bin'
-$TEMP_DIR      = 'C:\ProgramData\SecureStore\Temp'
+$MACH_BLOB     = "${Env:ProgramData}\SecureStore\Secrets\GITHUB_PAT.bin"
+$TEMP_DIR      = "${Env:ProgramData}\SecureStore\Temp"
 
 # ===================== IDENTITY / CONTEXT HELPERS =====================
 function Test-IsSystem {
@@ -210,7 +208,7 @@ if (-not (Test-Path `$UserBase)) { New-Item -ItemType Directory -Path `$UserBase
 # ===================== PAYLOAD RUNNERS =====================
 function Invoke-RemoteScript {
     param([Parameter(Mandatory)][string]$RemoteScriptUrl, [Parameter(Mandatory)][string]$GitHubPAT)
-    $DownloadDirectory = "C:\ProgramData\SecureStore\Runtime\Temp"
+    $DownloadDirectory = "${Env:ProgramData}\SecureStore\Runtime\Temp"
     $DownloadPath      = Join-Path $DownloadDirectory 'remoteScript.ps1'
     try {
         if (-not (Test-Path -Path $DownloadDirectory)) {

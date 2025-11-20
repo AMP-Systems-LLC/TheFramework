@@ -5,7 +5,7 @@ Import-Module $env:SyncroModule
   Store a GitHub PAT securely on the endpoint using DPAPI (LocalMachine).
 
 .DESCRIPTION
-  - Encrypts the PAT with DPAPI LocalMachine and writes to C:\ProgramData\SecureStore\Secrets\GITHUB_PAT.bin
+  - Encrypts the PAT with DPAPI LocalMachine and writes to ${Env:ProgramData}\SecureStore\Secrets\GITHUB_PAT.bin
   - Locks the secrets directory to Administrators and SYSTEM only (no inheritance).
   - Supports plaintext flags: force_update ("yes"/"no") and clear_variable ("yes"/"no").
   - Does NOT seed a per-user secret. The Framework will handle per-user seeding when $runasuser = 'yes'.
@@ -26,7 +26,7 @@ if (-not $clear_variable) { $clear_variable = "no" }
 
 # ====== CONSTANTS (generic) ======
 $SECRET_NAME = 'GITHUB_PAT'
-$BASE_DIR    = 'C:\ProgramData\SecureStore\Secrets'
+$BASE_DIR    = "${Env:ProgramData}\SecureStore\Secrets"
 $BLOB_PATH   = Join-Path $BASE_DIR "$SECRET_NAME.bin"
 $ENTROPY     = [Text.Encoding]::UTF8.GetBytes("Org-Secret-v1:$SECRET_NAME")
 $ErrorActionPreference = 'Stop'
